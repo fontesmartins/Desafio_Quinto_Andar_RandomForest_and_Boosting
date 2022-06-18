@@ -1,0 +1,663 @@
+---
+title: "Desafio_Quinto_Andar"
+output: pdf_document
+date: '2022-06-07'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r eval=F}
+library(randomForest)
+library(gbm)
+library(tidyverse)
+library(forecast )
+library(ggcorrplot)
+library(lares)
+library(gridExtra)
+library(lubridate)
+library(caret)
+
+```
+
+
+## Set directory 
+```{r  }
+setwd("~/R_K/tera")
+df_raw <- read_csv('base.csv')
+
+df_raw <- df_raw %>% 
+  filter(CondicaoVenda == 'Normal')
+df_raw
+```
+
+## All missing values 
+```{r}
+sum(is.na(df_raw))
+```
+## Info 
+```{r}
+glimpse(df_raw)
+
+```
+
+
+
+## Sum NA for each column 
+```{r}
+sapply(df_raw, function(x) sum(is.na(x)))
+```
+
+## Transforming variables as date
+```{r}
+df <- df_raw
+
+df %>% 
+  select(contains(match ='Ano'))
+   
+df$AnoReforma <- parse_date_time(x = df$AnoReforma, orders = '%Y')
+df$AnoGaragem <- parse_date_time(x = df$AnoGaragem, orders = '%Y')
+df$AnoVenda <- parse_date_time(x = df$AnoVenda, orders = '%Y')
+```
+
+## Selecing only features with less than 500 missing values 
+```{r}
+df$Id <- NULL
+
+temp <-  lapply(df, function(x) sum(is.na(x)))
+temp <- as.data.frame(temp[temp > 500] )
+df <- df %>% 
+  select(-names(temp))
+
+sapply(df, function(x) sum(is.na(x)))
+```
+
+## Plot in loop 
+
+```{r}
+df_cat <- df[,!sapply(df, is.numeric)]
+df_cat$PrecoVenda <-  df$PrecoVenda
+## organizando 
+df_cat <-  df_cat %>% 
+  select(PrecoVenda, names(df_cat))
+
+df_cat <- df_cat %>% 
+  select(-AnoVenda, -AnoGaragem, -AnoReforma)
+
+```
+
+# Saving 
+```{r}
+plot_list <- list()
+for (i in 1:length(df_cat)){
+  plot_list[[i]] <- ggplot(df_cat, aes_string( x =names(df_cat[i]), y =names(df_cat[1]))) +
+    geom_boxplot()
+  
+}
+```
+ 
+
+```{r}
+v1 <- plot_list[c(2:10)]
+do.call(grid.arrange,v1)
+```
+
+```{r}
+v2 <- plot_list[-1]
+v2
+```
+
+```{r}
+df_num <- df[,sapply(df, function(x) is.numeric(x))]
+df_num <- df_num %>% 
+  select(PrecoVenda, names(df_num))
+df_num
+```
+
+
+# Saving 
+```{r}
+plot_list <- list()
+for (i in 1:length(df_num)){
+  plot_list[[i]] <- ggplot(df_num, aes_string( x =names(df_num[i]), y =names(df_num[1]))) +
+    geom_point()
+  
+}
+```
+
+```{r}
+v2 <- plot_list[-1]
+v2
+```
+
+```{r}
+plot_list <- list()
+for (i in 1:length(df_num)){
+  plot_list[[i]] <- ggplot(df_num, aes_string( x =names(df_num[i]))) +
+    geom_histogram()
+  
+}
+plot_list
+```
+
+## Function to tranform char into factor  
+```{r}
+col_2factor <- function(data){
+  datacat <- data[,!sapply(data, is.numeric)]
+  datacat <- datacat[,!sapply(datacat, lubridate::is.POSIXct)]
+  datacat <- datacat[,!sapply(datacat, lubridate::is.Date)]
+  
+
+  datacat <- lapply(datacat, function(x) as.factor(x))
+  
+  data_temp <- data %>% 
+    dplyr::select(-names(datacat))
+  
+  datan <- dplyr::as_tibble(cbind(data_temp,datacat))
+  datan <- dplyr::select(datan,names(data))
+  return(datan)
+}
+
+```
+
+
+
+
+## Transformando variáveis categóricas em factor
+```{r}
+df <- col_2factor(df)
+str(df) 
+```
+
+
+
+## Ordinal Encoding 
+```{r}
+
+
+old <- c("Po", "Fa", "TA", "Gd", "Ex"  ) 
+new   <- c(1, 2, 3, 4, 5 ) 
+
+
+df$CondicaoGaragem = as.numeric(plyr::mapvalues(df$CondicaoGaragem, from =old, to = new ))
+df[['CondicaoGaragem']][is.na(df[['CondicaoGaragem']])] <- 0
+
+df$QualidadeGaragem = as.numeric(plyr::mapvalues(df$QualidadeGaragem, from =old, to = new ))
+df[['QualidadeGaragem']][is.na(df[['QualidadeGaragem']])] <- 0
+
+df$CondicaoExterna = as.numeric(plyr::mapvalues(df$CondicaoExterna, from =old, to = new ))
+
+sapply(df, function(x) sum(is.na(x)))
+
+
+```
+
+```{r}
+
+old <- c( "Fa", "TA", "Gd", "Ex"  ) 
+new   <- c(1, 2, 3, 4  ) 
+
+
+df$AlturaPorao = as.numeric(plyr::mapvalues(df$AlturaPorao, from =old, to = new ))
+df[['AlturaPorao']][is.na(df[['AlturaPorao']])] <- 0
+
+df$QualidadeCozinha = as.numeric(plyr::mapvalues(df$QualidadeCozinha, from =old, to = new ))
+df$QualidadeCobertura = as.numeric(plyr::mapvalues(df$QualidadeCobertura, from =old, to = new ))
+```
+
+```{r}
+
+old <- c("Po", "Fa", "TA", "Gd" ) 
+new   <- c(1, 2, 3, 4 ) 
+
+
+
+df$CondicaoPorao = as.numeric(plyr::mapvalues(df$CondicaoPorao, from =old, to = new ))
+df[['CondicaoPorao']][is.na(df[['CondicaoPorao']])] <- 0
+
+```
+
+
+######################################
+```{r}
+
+old <- c("Po", "Fa", "TA", "Gd", "Ex"  ) 
+new   <- c(1, 2, 3, 4, 5 ) 
+
+
+
+df$QualidadeAquecimento = as.numeric(plyr::mapvalues(df$Aquecimento, from =old, to = new ))
+table(df$QualidadeAquecimento)
+
+```
+##############
+
+## Othes olds and news 
+
+
+```{r}
+
+old <- c('Gd', 'Av',' Mn', 'No')
+new   <- c(1, 2, 3, 4 ) 
+df$ParedePorao = as.numeric(plyr::mapvalues(df$ParedePorao, from =old, to = new ))
+df[['ParedePorao']][is.na(df[['ParedePorao']])] <- 0
+
+table(train$ParedePorao)
+```
+
+
+```{r}
+old <- c('GLQ', "ALQ", "BLQ", "Rec", "LwQ", "Unf")
+new   <- c(1, 2, 3, 4,5,6 ) 
+df$TipoAcabPorao1 = as.numeric(plyr::mapvalues(df$TipoAcabPorao1, from =old, to = new ))
+df[['TipoAcabPorao1']][is.na(df[['TipoAcabPorao1']])] <- 0
+
+df$TipoAcabPorao2 = as.numeric(plyr::mapvalues(df$TipoAcabPorao2, from =old, to = new ))
+df[['TipoAcabPorao2']][is.na(df[['TipoAcabPorao2']])] <- 0
+```
+
+
+```{r}
+
+old <- c('2Types', 'Attchd', 'Basment', 'BuiltIn', 'CarPort', 'Detchd')
+new   <- c(1, 2, 3, 4,5,6 ) 
+df$LocalGaragem = as.numeric(plyr::mapvalues(df$LocalGaragem, from =old, to = new ))
+df[['LocalGaragem']][is.na(df[['LocalGaragem']])] <- 0
+
+```
+
+
+```{r}
+old <- c('Fin', 'RFn', 'Unf')
+new   <- c(1, 2, 3) 
+df$AcabamentoGaragem = as.numeric(plyr::mapvalues(df$AcabamentoGaragem, from =old, to = new ))
+df[['AcabamentoGaragem']][is.na(df[['AcabamentoGaragem']])] <- 0
+
+```
+
+
+```{r}
+
+old <- c('GLQ', 'ALQ', 'BLQ', 'Rec', 'LwQ','Unf' )
+new   <- c(1, 2, 3,4,5,6) 
+df$TipoAcabPorao1 = as.numeric(plyr::mapvalues(df$TipoAcabPorao1, from =old, to = new ))
+df[['TipoAcabPorao1']][is.na(df[['TipoAcabPorao1']])] <- 0
+
+df$TipoAcabPorao2 = as.numeric(plyr::mapvalues(df$TipoAcabPorao2, from =old, to = new ))
+df[['TipoAcabPorao2']][is.na(df[['TipoAcabPorao2']])] <- 0
+
+table(df$TipoAcabPorao1)
+
+```
+
+```{r}
+
+index <- createDataPartition(df$PrecoVenda, p =0.7, list = F )
+train <-  df[index,]
+test <-  df[-index,]
+
+index <- createDataPartition(test$PrecoVenda, p =0.5, list = F )
+validation <-  test[index,]
+
+test <-  test[-index,]
+
+```
+
+## Replace missing values to mean 
+```{r}
+train <- train %>% 
+         mutate_if(is.numeric, ~replace_na(.,mean(., na.rm = TRUE)))
+
+validation <- validation %>% 
+         mutate_if(is.numeric, ~replace_na(.,mean(., na.rm = TRUE)))
+
+test <- test %>% 
+         mutate_if(is.numeric, ~replace_na(.,mean(., na.rm = TRUE)))
+```
+
+
+
+## Function to replace NA to mode for categorical features 
+
+```{r}
+
+
+nacat__2mode <- function(data)
+  {
+  getmode <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+  }
+  ## get cat 
+  datacat <- data[,!sapply(data, is.numeric)]
+  datacat <- datacat[,!sapply(datacat, lubridate::is.POSIXct)]
+  ## get vars with na
+  temp <- lapply(datacat, function(x) sum(is.na(x)) > 0)
+  temp <- as.data.frame(temp[temp=='TRUE'] )
+  
+  datacat_na <- datacat[colnames(temp)]
+  
+  ##
+  for(i in 1:length(datacat_na)){
+    x_dropna <- datacat_na[complete.cases(datacat_na[,i]),i]
+    mode <- getmode(x_dropna)
+    mode[1,]
+    column <- datacat_na[,i]
+    column[which(is.na(column)),] <- mode[1,]
+    datacat_na[,i] <- column
+  }
+  data_temp <- data %>% 
+    dplyr::select(-names(datacat_na))
+  datan <- dplyr::as_tibble(cbind(data_temp,datacat_na))
+  datan <- dplyr::select(datan,names(data))
+  return(datan)
+}
+```
+
+
+## Replacing NA values to mode 
+```{r}
+
+train <- nacat__2mode(train)
+
+
+
+sapply(validation, function(x) sum(is.na(x)))
+
+```
+
+
+
+
+```{r}
+train <- train %>% 
+         mutate_if(is.POSIXct, ~replace_na(.,mean(., na.rm = TRUE)))
+
+validation <- validation %>% 
+         mutate_if(is.POSIXct, ~replace_na(.,mean(., na.rm = TRUE)))
+
+test <- test %>% 
+         mutate_if(is.POSIXct, ~replace_na(.,mean(., na.rm = TRUE)))
+```
+
+
+```{r}
+sum(is.na(train))
+```
+```{r}
+sum(is.na(validation))
+```
+```{r}
+sum(is.na(test))
+```
+## Other way 
+```{r}
+encode_ordinal <- function(x, order = unique(x)) {
+  x <- as.numeric(factor(x, levels = order, exclude = NULL))
+  x
+}
+```
+
+```{r}
+
+train[['FormaProp']] <- encode_ordinal(train[['FormaProp']])
+train[['EntradaPavimentada']] <- encode_ordinal(train[['EntradaPavimentada']])
+train[['EstiloHabitacao']] <- encode_ordinal(train[['EstiloHabitacao']])
+
+```
+
+```{r}
+validation[['FormaProp']] <- encode_ordinal(validation[['FormaProp']])
+validation[['EntradaPavimentada']] <- encode_ordinal(validation[['EntradaPavimentada']])
+validation[['EstiloHabitacao']] <- encode_ordinal(validation[['EstiloHabitacao']])
+```
+
+```{r}
+test[['FormaProp']] <- encode_ordinal(test[['FormaProp']])
+test[['EntradaPavimentada']] <- encode_ordinal(test[['EntradaPavimentada']])
+test[['EstiloHabitacao']] <- encode_ordinal(test[['EstiloHabitacao']])
+```
+
+# dummy
+```{r}
+train[['Rua']] <- encode_ordinal(train[['Rua']])
+train[['ArCentral']] <- encode_ordinal(train[['ArCentral']])
+
+```
+
+```{r}
+validation[['Rua']] <- encode_ordinal(validation[['Rua']])
+validation[['ArCentral']] <- encode_ordinal(validation[['ArCentral']])
+```
+
+```{r}
+test[['Rua']] <- encode_ordinal(test[['Rua']])
+test[['ArCentral']] <- encode_ordinal(test[['ArCentral']])
+```
+
+```{r}
+train$TipoVenda <- NULL 
+train$Outros <- NULL
+train$CondicaoVenda <- NULL
+
+```
+
+```{r}
+validation$TipoVenda <- NULL 
+validation$Outros <- NULL
+validation$CondicaoVenda <- NULL
+
+```
+
+```{r}
+test$TipoVenda <- NULL 
+test$Outros <- NULL
+test$CondicaoVenda <- NULL
+
+```
+
+```{r}
+train$log_PrecoVenda <- log(train$PrecoVenda)
+validation$log_preco_venda <- log(validation$PrecoVenda)
+test$log_preco_venda <- log(test$PrecoVenda)
+
+yvalidation <- validation$PrecoVenda
+ytest <- test$PrecoVenda
+
+train$PrecoVenda <-  NULL
+validation$PrecoVenda <- NULL
+test$PrecoVenda <- NULL
+
+
+``` 
+## One hot encoding function
+```{r}
+
+one_hot_encoding = function(df, columns="season"){
+  # create a copy of the original data.frame for not modifying the original
+  df = cbind(df)
+  # convert the columns to vector in case it is a string
+  columns = c(columns)
+  # for each variable perform the One hot encoding
+  for (column in columns){
+    unique_values = sort(unique(df[column])[,column])
+    non_reference_values  = unique_values[c(-1)] # the first element is going 
+    # to be the reference by default
+    for (value in non_reference_values){
+      # the new dummy column name
+      new_col_name = paste0(column,'.',value)
+      # create new dummy column for each value of the non_reference_values
+      df[new_col_name] <- with(df, ifelse(df[,column] == value, 1, 0))
+    }
+    # delete the one hot encoded column
+    df[column] = NULL
+    
+  }
+  return(df)
+}
+```
+
+
+
+## One hot encoding and cleaning names 
+```{r}
+train <- janitor::clean_names(one_hot_encoding(train, columns = c( 'ClasseZona', 'PlanoProp','Servicos',
+                                       'ConfigLote', 'InclinacaoLote', 'Bairro', 'Estrada1',
+                                       'Estrada2', 'TipoHabitacao', 'TipoTelhado', 
+                                        'Exterior1', 'Exterior2','TipoAlvenaria',
+                                       'TipoFundacao', 'Aquecimento','InstalacaoEletrica',
+                                       'Funcionalidade','MaterialTelhado' )))
+
+validation <- janitor::clean_names(one_hot_encoding(validation, columns = c( 'ClasseZona', 'PlanoProp','Servicos',
+                                       'ConfigLote', 'InclinacaoLote', 'Bairro', 'Estrada1',
+                                       'Estrada2', 'TipoHabitacao', 'TipoTelhado', 
+                                        'Exterior1', 'Exterior2','TipoAlvenaria',
+                                       'TipoFundacao', 'Aquecimento','InstalacaoEletrica',
+                                       'Funcionalidade','MaterialTelhado' )))
+
+test <- janitor::clean_names(one_hot_encoding(test, columns = c( 'ClasseZona', 'PlanoProp','Servicos',
+                                       'ConfigLote', 'InclinacaoLote', 'Bairro', 'Estrada1',
+                                       'Estrada2', 'TipoHabitacao', 'TipoTelhado', 
+                                        'Exterior1', 'Exterior2','TipoAlvenaria',
+                                       'TipoFundacao', 'Aquecimento','InstalacaoEletrica',
+                                       'Funcionalidade','MaterialTelhado' )))
+```
+
+```{r}
+model_rf <- randomForest(log_preco_venda ~.,data = train, importance = T)
+model_rf
+
+```
+
+
+
+
+```{r}
+imp <- importance(model_rf)
+imp 
+```
+## Select the top 50 
+```{r}
+
+imp = as.data.frame(imp)
+imp = imp %>% 
+  arrange(desc(imp$`%IncMSE`)) 
+
+imp = imp[c(1:40),]
+imp = row.names(imp)
+imp
+
+```
+
+```{r}
+train2 <-  train[,imp]
+train2$log_preco_venda <- train$log_preco_venda
+train = train2 
+train
+```
+
+
+
+
+The best hyperparameters for  random forest.  
+```{r}
+random_f_model  <- randomForest(log_preco_venda ~.,data = train, importance = T, ntree = 100)
+
+
+```
+## validation avaliation 
+```{r}
+pred = predict(random_f_model, validation)
+pred = exp(pred)
+acc = accuracy(pred, yvalidation)
+acc
+```
+
+
+
+## Test avaliation 
+```{r}
+pred = predict(random_f_model, test)
+pred = exp(pred)
+acc = accuracy(pred, ytest)
+acc
+```
+
+
+
+
+## LM model EDA
+
+
+```{r}
+df$PrecoVenda <- NULL
+df_num <- train %>% 
+  select(where(is.numeric))
+
+corr_var(df, log_preco_venda, top = 15 )
+
+```
+
+
+
+## Linear Regression
+
+```{r}
+df$log_preco_venda <- log(df$PrecoVenda)
+
+
+lm_model  <- lm(log_preco_venda ~ AreaPorao+QualidadeCozinha +Lareira+
+               Qualidade+AreaConstruida + AnoConstrucao, data= df)
+
+summary(lm_model)
+```
+## multicollinearity test
+
+```{r}
+car::vif(lm_model)
+```
+
+
+```{r}
+sum(car::vif(lm_model))
+```
+## Residual Normality Test 
+```{r}
+shapiro.test(lm_model$residuals)
+```
+## homoscedasticity test
+```{r}
+plot(lm_model$residuals)
+```
+## Boosting 
+```{r}
+train2 <- train[, !sapply(train, function(x) is.POSIXct(x))]
+```
+
+
+```{r}
+boost_model <- gbm(log_preco_venda ~., data = train2, distribution = "gaussian", n.trees = 500)
+summary(boost_model)
+```
+## Validation accuracy 
+```{r}
+pred_boost <- predict(boost_model, newdata = validation)
+pred_boost <- exp(pred_boost)
+acc <- accuracy(pred_boost, yvalidation)
+acc
+```
+## test accuracy 
+
+```{r}
+pred_boost <- predict(boost_model, newdata = test)
+pred_boost <- exp(pred_boost)
+acc <- accuracy(pred_boost, ytest)
+acc
+```
+```
+
+
+
+
+
