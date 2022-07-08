@@ -61,7 +61,7 @@ df$AnoGaragem <- parse_date_time(x = df$AnoGaragem, orders = '%Y')
 df$AnoVenda <- parse_date_time(x = df$AnoVenda, orders = '%Y')
 ```
 
-## Selecing only features with less than 500 missing values 
+## Selecting only features with less than 500 missing values 
 ```{r}
 df$Id <- NULL
 
@@ -108,16 +108,15 @@ v2 <- plot_list[-1]
 v2
 ```
 
+
+# Saving 
 ```{r}
 df_num <- df[,sapply(df, function(x) is.numeric(x))]
 df_num <- df_num %>% 
   select(PrecoVenda, names(df_num))
 df_num
-```
 
 
-# Saving 
-```{r}
 plot_list <- list()
 for (i in 1:length(df_num)){
   plot_list[[i]] <- ggplot(df_num, aes_string( x =names(df_num[i]), y =names(df_num[1]))) +
@@ -141,7 +140,7 @@ for (i in 1:length(df_num)){
 plot_list
 ```
 
-## Function to tranform char into factor  
+## Function to transform char into factor  
 ```{r}
 col_2factor <- function(data){
   datacat <- data[,!sapply(data, is.numeric)]
@@ -164,7 +163,8 @@ col_2factor <- function(data){
 
 
 
-## Transformando variáveis categóricas em factor
+
+## Transform categoric variables into factor 
 ```{r}
 df <- col_2factor(df)
 str(df) 
@@ -230,10 +230,11 @@ new   <- c(1, 2, 3, 4, 5 )
 df$QualidadeAquecimento = as.numeric(plyr::mapvalues(df$Aquecimento, from =old, to = new ))
 table(df$QualidadeAquecimento)
 
+
 ```
 ##############
 
-## Othes olds and news 
+## Others old and new 
 
 
 ```{r}
@@ -304,16 +305,34 @@ test <-  test[-index,]
 
 ```
 
-## Replace missing values to mean 
+
 ```{r}
+
 train <- train %>% 
          mutate_if(is.numeric, ~replace_na(.,mean(., na.rm = TRUE)))
 
-validation <- validation %>% 
-         mutate_if(is.numeric, ~replace_na(.,mean(., na.rm = TRUE)))
 
-test <- test %>% 
-         mutate_if(is.numeric, ~replace_na(.,mean(., na.rm = TRUE)))
+
+mean_train <- function(xtr, xtes) {
+  data_num <- xtr[,sapply(xtr, function(x) is.numeric(x))]
+   dfna<- data.frame(sapply(data_num, function(x) sum(is.na(x))))
+   colnames(dfna) <- "V1"
+   dfna[2] <- rownames(dfna) 
+   dfna <- dfna %>% filter(V1>0)
+   for (i in 1:nrow(dfna)){
+     cname <- dfna[i,2]
+     for (i in 1:length(xtes)) {
+      if(colnames(xtes[i])==cname){
+        xtes[[cname]][is.na(xtes[[cname]])] <- mean(xtr[[cname]], na.rm = T)
+      } 
+     }
+     
+   } 
+   return(xtes)
+}
+validation <- mean_train(train, validation)
+test <- mean_train(train, test)
+sapply(test, function(x) sum(is.na(x)))
 ```
 
 
@@ -537,7 +556,7 @@ model_rf
 imp <- importance(model_rf)
 imp 
 ```
-## Select the top 50 
+## Select top 50 
 ```{r}
 
 imp = as.data.frame(imp)
@@ -566,7 +585,7 @@ random_f_model  <- randomForest(log_preco_venda ~.,data = train, importance = T,
 
 
 ```
-## validation avaliation 
+## validation evaluation  
 ```{r}
 pred = predict(random_f_model, validation)
 pred = exp(pred)
@@ -576,7 +595,7 @@ acc
 
 
 
-## Test avaliation 
+## Test evaluation
 ```{r}
 pred = predict(random_f_model, test)
 pred = exp(pred)
@@ -586,8 +605,8 @@ acc
 
 
 
-
-## LM model EDA
+###############################
+## LM model 
 
 
 ```{r}
