@@ -314,7 +314,7 @@ train <- train %>%
 
 
 mean_train <- function(xtr, xtes) {
-  data_num <- xtr[,sapply(xtr, function(x) is.numeric(x))]
+  data_num <- xtes[,sapply(xtr, function(x) is.numeric(x))]
    dfna<- data.frame(sapply(data_num, function(x) sum(is.na(x))))
    colnames(dfna) <- "V1"
    dfna[2] <- rownames(dfna) 
